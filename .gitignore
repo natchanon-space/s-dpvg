@@ -1,3 +1,7 @@
+# Local Settings
+.python-version
+playground/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
