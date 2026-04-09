@@ -4,6 +4,8 @@ import torch
 from tensordict.tensordict import TensorDict
 from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded
 from torchrl.envs import EnvBase
+from torchrl.envs.batched_envs import ParallelEnv, SerialEnv
+from torchrl.envs.transforms import TransformedEnv, Compose, FlattenObservation, CatTensors, RenameTransform
 
 
 def repeat_batch_dim(t: torch.Tensor, times: int):
@@ -164,3 +166,50 @@ class SimpleDpvgEnv(EnvBase):
             dtype=torch.bool,
         )
         # do not have to define done_spec, we will use default one
+
+
+def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p", flatten_obs=True):
+
+    def _make_env():
+        return SimpleDpvgEnv(env_config=env_config)
+    
+    match mode:
+        case "p":
+            env = ParallelEnv(
+                num_workers=n_workers,
+                create_env_fn=_make_env
+            )
+        case "s":
+            env = SerialEnv(
+                num_workers=n_workers,
+                create_env_fn=_make_env
+            )
+        case _:
+            assert ValueError("Invalide environment mode: either (p)arallel or (s)erial")
+
+    if flatten_obs:
+        env = TransformedEnv(
+            env,
+            Compose(
+                FlattenObservation(
+                    first_dim=-2,
+                    last_dim=-1,
+                    in_keys=[("agents", "observation", "choices")]
+                ),
+                CatTensors(
+                    in_keys=[
+                        ("agents", "observation", "choices"),
+                        ("agents", "observation", "id"),
+                        ("agents", "observation", "state"),
+                    ],
+                    # out_key=("agents", "observation"),
+                    del_keys=True
+                ),
+                RenameTransform(
+                    in_keys=("observation_vector"),
+                    out_keys=("agents", "observation")
+                )
+            )
+        )
+
+    return env
