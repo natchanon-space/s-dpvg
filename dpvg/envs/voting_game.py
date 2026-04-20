@@ -168,10 +168,10 @@ class SimpleDpvgEnv(EnvBase):
         # do not have to define done_spec, we will use default one
 
 
-def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p", flatten_obs=True):
+def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p", flatten_obs=True, device=None):
 
     def _make_env():
-        return SimpleDpvgEnv(env_config=env_config)
+        return SimpleDpvgEnv(env_config=env_config, device=device)
     
     match mode:
         case "p":

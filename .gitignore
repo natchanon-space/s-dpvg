@@ -1,4 +1,5 @@
 # Local Settings
+.vscode/
 .python-version
 playground/
 
