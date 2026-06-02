@@ -3,8 +3,8 @@ from torch import Tensor
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
 
-from envs.stats import gini_coef
-from envs.voting_game import SimpleDpvgConfig
+from dpvg.envs.stats import gini_coef
+from dpvg.envs.voting_game import SimpleDpvgConfig
 
 
 ### greedy policy ###
@@ -24,7 +24,8 @@ greedy_policy = TensorDictModule(
 ### gini policy ###
 
 def gini_actions(obs_td: TensorDict):
-    """original version of gini actions"""
+    """original version of gini actions (the best for GINI)"""
+
     choices = obs_td["choices"][0]
     state = obs_td["state"][0]
 

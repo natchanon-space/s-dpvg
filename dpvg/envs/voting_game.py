@@ -4,7 +4,7 @@ import torch
 from tensordict.tensordict import TensorDict
 from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded
 from torchrl.envs import EnvBase
-from torchrl.envs.batched_envs import ParallelEnv, SerialEnv
+from torchrl.envs.batched_envs import ParallelEnv, SerialEnv, BatchedEnvBase
 from torchrl.envs.transforms import TransformedEnv, Compose, FlattenObservation, CatTensors, RenameTransform
 
 
@@ -19,6 +19,7 @@ class SimpleDpvgConfig():
     l: int = 10         # terminal condition is (max - min > l)
     passive: int = 0    # reward shaping if applicable!
     dtype = torch.float32
+    max_steps: int = 100
 
 
 class SimpleDpvgEnv(EnvBase):
@@ -34,12 +35,14 @@ class SimpleDpvgEnv(EnvBase):
         self.dtype = env_config.dtype
         # initiate spec and initial states
         self.agent_ids = torch.eye(self.n_agents, dtype=self.dtype)
+        self.agents: list[str] = [f"agent_{i}" for i in range(self.n_agents)]
         self.current_choices = None
         self.raw_power = None
+        self.is_flatten = False
         self._make_spec()
         self._reset(None)
 
-    def _reset(self, tensordict, **kwargs):
+    def _reset(self, tensordict, **kwargs) -> TensorDict:
         """return the first tensordict of a rollout."""
         # reset stages
         self.raw_power = torch.zeros(self.n_agents, dtype=self.dtype)
@@ -58,7 +61,7 @@ class SimpleDpvgEnv(EnvBase):
         )
         return next_td
 
-    def _step(self, tensordict):
+    def _step(self, tensordict) -> TensorDict:
         # counting vote
         votes = tensordict["agents"]["action"]
         count_1 = torch.sum(votes)
@@ -168,7 +171,12 @@ class SimpleDpvgEnv(EnvBase):
         # do not have to define done_spec, we will use default one
 
 
-def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p", flatten_obs=True, device=None):
+def get_vectorized_sdpvg(
+    env_config: SimpleDpvgConfig, 
+    n_workers: int, mode="p", 
+    flatten_obs=True, 
+    device=None
+) -> BatchedEnvBase:
 
     def _make_env():
         return SimpleDpvgEnv(env_config=env_config, device=device)
@@ -192,8 +200,8 @@ def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p",
             env,
             Compose(
                 FlattenObservation(
-                    first_dim=-2,
-                    last_dim=-1,
+                    first_dim=-2,  # first dim to be flatten
+                    last_dim=-1,   # last dim to be flatten
                     in_keys=[("agents", "observation", "choices")]
                 ),
                 CatTensors(
@@ -203,7 +211,7 @@ def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p",
                         ("agents", "observation", "state"),
                     ],
                     # out_key=("agents", "observation"),
-                    del_keys=True
+                    del_keys=True   # input will be deleted after concat
                 ),
                 RenameTransform(
                     in_keys=("observation_vector"),
@@ -211,5 +219,7 @@ def get_vectorized_sdpvg(env_config: SimpleDpvgConfig, n_workers: int, mode="p",
                 )
             )
         )
+
+        env.is_flatten = True
 
     return env
