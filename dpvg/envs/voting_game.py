@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 import torch
+from torch import Tensor
 
 from tensordict.tensordict import TensorDict
 from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded
 from torchrl.envs import EnvBase
 from torchrl.envs.batched_envs import ParallelEnv, SerialEnv, BatchedEnvBase
 from torchrl.envs.transforms import TransformedEnv, Compose, FlattenObservation, CatTensors, RenameTransform
+
+from dpvg.envs.stats import gini_coef, entropy
 
 
 def repeat_batch_dim(t: torch.Tensor, times: int):
@@ -39,6 +42,9 @@ class SimpleDpvgEnv(EnvBase):
         self.current_choices = None
         self.raw_power = None
         self.is_flatten = False
+        self.episode_length = 0
+        self.episode_gini = 0     # averaged per episode
+        self.episode_entropy = 0  # averaged per episode
         self._make_spec()
         self._reset(None)
 
@@ -47,6 +53,10 @@ class SimpleDpvgEnv(EnvBase):
         # reset stages
         self.raw_power = torch.zeros(self.n_agents, dtype=self.dtype)
         self.current_choices = self._rand_choices()
+        # reset stats
+        self.episode_entropy = 0
+        self.episode_gini = 0
+        self.episode_length = 0
         # create initial rollout return
         next_td = TensorDict(
             {
@@ -55,7 +65,14 @@ class SimpleDpvgEnv(EnvBase):
                         "id": self.agent_ids,
                         "state": repeat_batch_dim(self.raw_power, self.n_agents),
                         "choices": repeat_batch_dim(self.current_choices, self.n_agents),
-                    }
+                    },
+                },
+                "info": {
+                    "episode_length": Tensor([self.episode_length]),
+                    "episode_entropy": Tensor([self.episode_entropy]),
+                    "episode_gini": Tensor([self.episode_gini]),
+                    "gini": Tensor([0]),
+                    "entropy": Tensor([0]),
                 }
             },
         )
@@ -70,10 +87,26 @@ class SimpleDpvgEnv(EnvBase):
         # save power gain as reward
         power_gain = self.current_choices[:, win_choice_idx]
         # transition to next state
+        current_state = self.raw_power - torch.min(self.raw_power)
         self.raw_power = self.raw_power + power_gain
         next_state = self.raw_power - torch.min(self.raw_power)
         # generate new choices
         self.current_choices = self._rand_choices()
+
+        # check done
+        done = (torch.max(self.raw_power) - torch.min(self.raw_power) > self.l).unsqueeze(0) # shape [1]
+        
+        # TODO: calculate for next step, info for next step
+        # gini calculation
+        _gini = gini_coef(power_gain + current_state)  # calculate the same way as gini actions
+        self.episode_gini = ((self.episode_gini * self.episode_length) + _gini) / (self.episode_length + 1)
+        # entropy calculation
+        _entropy = entropy(votes)
+        self.episode_entropy = ((self.episode_entropy * self.episode_length) + _entropy) / (self.episode_length + 1)    
+        # episode length
+        self.episode_length += 1
+
+
         # combine output
         next_tensordict = TensorDict(
             {
@@ -85,7 +118,14 @@ class SimpleDpvgEnv(EnvBase):
                     },
                     "reward": power_gain.unsqueeze(-1),
                 },
-                "done": (torch.max(self.raw_power) - torch.min(self.raw_power) > self.l).unsqueeze(0)  # shape [1]
+                "info": {
+                    "episode_length": Tensor([self.episode_length]),
+                    "episode_entropy": Tensor([self.episode_entropy]),
+                    "episode_gini": Tensor([self.episode_gini]),
+                    "gini": Tensor([_gini]),
+                    "entropy": Tensor([_entropy]),
+                },
+                "done": done  # shape [1]
             }
         )
         return next_tensordict
@@ -134,6 +174,16 @@ class SimpleDpvgEnv(EnvBase):
                     },
                     shape=(self.n_agents,)
                 ),
+                "info": Composite(
+                    {
+                        "episode_length": Unbounded(shape=1),
+                        "episode_gini": Unbounded(shape=1),
+                        "episode_entropy": Unbounded(shape=1),
+                        "gini": Unbounded(shape=1),
+                        "entropy": Unbounded(shape=1),
+                    },
+                    shape=(1,)
+                )
             }
         )
         self.action_spec = Composite(
