@@ -84,7 +84,7 @@ class SimpleDpvgEnv(EnvBase):
         votes_idx = votes.argmax(dim=-1)
         count_1 = torch.sum(votes_idx)
         count_0 = self.n_agents - count_1
-        win_choice_idx = int(count_1 > count_0) 
+        win_choice_idx = int(count_1 > count_0)
         # save power gain as reward
         power_gain = self.current_choices[:, win_choice_idx]
         # transition to next state
@@ -102,7 +102,7 @@ class SimpleDpvgEnv(EnvBase):
         _gini = gini_coef(power_gain + current_state)  # calculate the same way as gini actions
         self.episode_gini = ((self.episode_gini * self.episode_length) + _gini) / (self.episode_length + 1)
         # entropy calculation
-        _entropy = entropy(votes)
+        _entropy = entropy(votes_idx)
         self.episode_entropy = ((self.episode_entropy * self.episode_length) + _entropy) / (self.episode_length + 1)    
         # episode length
         self.episode_length += 1
