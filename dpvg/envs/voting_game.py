@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 
 from tensordict.tensordict import TensorDict
-from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded
+from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded, Categorical
 from torchrl.envs import EnvBase
 from torchrl.envs.batched_envs import ParallelEnv, SerialEnv, BatchedEnvBase
 from torchrl.envs.transforms import TransformedEnv, Compose, FlattenObservation, CatTensors, RenameTransform
@@ -81,7 +81,8 @@ class SimpleDpvgEnv(EnvBase):
     def _step(self, tensordict) -> TensorDict:
         # counting vote
         votes = tensordict["agents"]["action"]
-        count_1 = torch.sum(votes)
+        votes_idx = votes.argmax(dim=-1)
+        count_1 = torch.sum(votes_idx)
         count_0 = self.n_agents - count_1
         win_choice_idx = int(count_1 > count_0) 
         # save power gain as reward
@@ -190,9 +191,10 @@ class SimpleDpvgEnv(EnvBase):
             {
                 "agents": Composite(
                     {
-                        "action": Binary(
-                            n=1,
-                            shape=(self.n_agents, 1)
+                        "action": OneHot(
+                            n=2,
+                            shape=(self.n_agents, 2),
+                            dtype=torch.float32
                         )
                     },
                     shape=(self.n_agents,)
@@ -273,3 +275,36 @@ def get_vectorized_sdpvg(
         env.is_flatten = True
 
     return env
+
+
+def print_step_detail(td: TensorDict, env_idx: int):
+    ## shape of td == (*B, n)
+    # prep data
+    # print(td)
+    step_td = td[env_idx]  # debatched
+    obs = step_td["agents", "observation"]
+    n_agents = obs.shape[0]
+    # observation
+    curr_state = obs[..., 0, 3*n_agents:]
+    curr_choice = obs[..., 0, :2*n_agents].reshape(n_agents, 2)
+    # action
+    actions = step_td["agents", "action"]
+    # next observation
+    next_state = step_td["next", "agents", "observation"][..., 0, 3*n_agents:]
+    print(next_state.shape)
+    # info
+    info = step_td["next", "info"]
+    # showing
+    print("=== state transition ===")
+    for i in range(n_agents):
+        print(f"{i}: ({curr_state[i].item()}) -> ", end="")
+        print(f"c: {curr_choice[i].cpu().numpy()} (vote: {actions[i, :].cpu().numpy()}) -> ", end="")
+        print(f"({next_state[i].item()})")
+    votes_idx = actions.argmax(dim=-1)
+    count_1 = torch.sum(votes_idx)
+    count_0 = n_agents - count_1
+    win_choice_idx = int(count_1 > count_0)
+    print(f">>> winning choice: {win_choice_idx}")
+    print("=== info ===")
+    print(f"entropy: {info['entropy'].item()}")
+    print(f"   gini: {info['gini'].item()}")
