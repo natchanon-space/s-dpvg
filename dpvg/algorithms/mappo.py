@@ -104,7 +104,8 @@ if __name__ == "__main__":
             # lazy init upon first call
             n_agent_inputs=None,  
             # 2 * n_action_per_agent
-            n_agent_outputs=2 * env.full_action_spec[env.action_key].shape[-1],
+            # n_agent_outputs=2 * env.full_action_spec[env.action_key].shape[-1],
+            n_agent_outputs=env.full_action_spec[env.action_key].shape[-1],
             # number of agents
             n_agents=n_agents,
             # the policies are decentralised
@@ -120,19 +121,21 @@ if __name__ == "__main__":
             # model settings: activation function for all node
             activation_class=torch.nn.Tanh  # or ReLU obviously!
         ),
-        NormalParamExtractor(),  # this will just separate the last dimension into two outputs: a loc and a non-negative scale
+        # NormalParamExtractor(),  # this will just separate the last dimension into two outputs: a loc and a non-negative scale
     )
     policy_module = TensorDictModule(
         policy_net,
         in_keys=[("agents", "observation")],
-        out_keys=[("agents", "loc"), ("agents", "scale")],
+        # out_keys=[("agents", "loc"), ("agents", "scale")],
+        out_keys=[("agents", "logits")],
     )
     policy = ProbabilisticActor(
         module=policy_module,
         spec=env.action_spec_unbatched,
-        in_keys=[("agents", "loc"), ("agents", "scale")],
+        # in_keys=[("agents", "loc"), ("agents", "scale")],
+        in_keys=[("agents", "logits")],
         out_keys=[env.action_key],
-        distribution_class=TanhNormal,
+        distribution_class=torch.distributions.OneHotCategorical,
         return_log_prob=True,
     )  # log prob for PPO loss
     print("==Running Policy==\n", policy(env.reset()))
