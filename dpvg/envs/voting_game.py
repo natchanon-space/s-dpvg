@@ -45,6 +45,9 @@ class SimpleDpvgEnv(EnvBase):
         self.episode_length = 0
         self.episode_gini = 0     # averaged per episode
         self.episode_entropy = 0  # averaged per episode
+        # etc
+        self.n_envs = None
+        # build
         self._make_spec()
         self._reset(None)
 
@@ -230,8 +233,10 @@ def get_vectorized_sdpvg(
     device=None
 ) -> BatchedEnvBase:
 
-    def _make_env():
-        return SimpleDpvgEnv(env_config=env_config, device=device)
+    def _make_env() -> SimpleDpvgEnv:
+        e = SimpleDpvgEnv(env_config=env_config, device=device)
+        e.n_envs = n_workers
+        return e
     
     match mode:
         case "p":

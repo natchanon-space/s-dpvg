@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from torchrl.envs import EnvBase, RewardSum, TransformedEnv
 
 ## environment extensions section
@@ -9,3 +10,7 @@ def episode_reward_ext(env: EnvBase, out_keys=[("agents", "episode_reward")]) ->
             out_keys=out_keys
         )
     )
+
+
+class MarlAlgorithm(ABC):
+    pass
