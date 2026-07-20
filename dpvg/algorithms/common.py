@@ -13,4 +13,17 @@ def episode_reward_ext(env: EnvBase, out_keys=[("agents", "episode_reward")]) ->
 
 
 class MarlAlgorithm(ABC):
-    pass
+    def build(self):
+        pass
+
+    def train(self):
+        pass
+
+    def save(self):
+        pass
+
+    def load(self):
+        pass
+
+    def close(self):
+        pass

@@ -126,6 +126,8 @@ class Mappo(MarlAlgorithm):
         print("==Running Critic==\n", self.critic(self.env.reset()))
 
 
+    def train(self):
+        ## defining collector and buffer
         ## colelctor
         self.collector = Collector(
             self.env,
@@ -167,7 +169,6 @@ class Mappo(MarlAlgorithm):
         ## optimizer
         self.optimizer = torch.optim.Adam(self.loss_module.parameters(), lr=self.lr)
 
-    def train(self):
         ## setting progress bar and stat his
         pbar = tqdm(total=self.n_iters, desc="episode_length_mean = 0")
 
@@ -282,6 +283,10 @@ class Mappo(MarlAlgorithm):
     def load(self):
         pass
 
+    def close(self):
+        """close everything"""
+        self.env.close()
+
 
 if __name__ == "__main__":
     # env config
@@ -301,7 +306,7 @@ if __name__ == "__main__":
     env = get_vectorized_sdpvg(
         env_config=env_config,
         n_workers=n_envs,
-        mode="p",
+        mode="p",  # parallel env
         flatten_obs=True,
     )
     # adding episode reward
@@ -312,7 +317,7 @@ if __name__ == "__main__":
 
     # print(env.full_action_spec)
     # print(env.action_spec)
-    policy = Mappo(env)
-    policy.train()
+    mappo = Mappo(env)
+    mappo.train()
 
-    env.close()
+    mappo.close()
