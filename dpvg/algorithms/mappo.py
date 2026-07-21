@@ -2,6 +2,7 @@ import torch
 import torchrl.modules
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import yaml
 
 # Tensordict modules
 from tensordict.nn import set_composite_lp_aggregate, TensorDictModule
@@ -28,38 +29,22 @@ from torchrl.objectives import ClipPPOLoss, ValueEstimators
 
 # local methods import
 from dpvg.algorithms.common import MarlAlgorithm, episode_reward_ext
-
+from configs.common import dict_to_namespace
 
 class Mappo(MarlAlgorithm):
     
-    def __init__(self, env: EnvBase):
+    device: str = "cpu"
+    
+    def __init__(self, env: EnvBase, cfg):
         super().__init__()
         set_composite_lp_aggregate(False).set()
         # TODO: refactoring parameters out to be external setting
         # env registration
-        self.n_agents = 5
         self.env = env
+        self.n_agents = self.env.n_agents
         self.env.reset()
-        self.device = "cpu"
-        # sampling
-        self.frames_per_batch = 6_000  # number of frames collected per training iteration
-        self.n_iters = 10  # 100
-        self.total_frames = self.frames_per_batch * self.n_iters
-        # training step
-        self.n_epochs = 30  # number of optimization steps per training iteration
-        self.minibatch_size = 400  # size of the mini-batches in each optimization steps
-        # optimizer
-        self.lr = 3e-4
-        self.max_grad_norm = 1.0
-        # ppo configuration
-        self.clip_epsilon = 0.2  # clip value for ppo loss
-        self.gamma = 0.99  # discount factor
-        self.lmbda = 0.9  # lambda for GAE (generalized advatage estimation)
-        self.entropy_eps = 1e-4  # coefficient of the entropy term in the ppo loss
-        # other configuaration
-        self.share_parameters_policy = False  # homogenous policy when it is true!
-        self.share_parameters_critic = False  # homogenous critic when it is true!
-        self.mappo = False  # IPPO if False, MAPPO if True
+        self.cfg = cfg
+
         # build
         self.build()
     
@@ -75,15 +60,15 @@ class Mappo(MarlAlgorithm):
                 # number of agents
                 n_agents=self.n_agents,
                 # the policies are decentralised
-                centralized=False,
+                centralized=False,  # independent
                 # parameter sharing properties
-                share_params=self.share_parameters_policy,
+                share_params=self.cfg.ppo.share_parameters_policy,
                 # device settign
-                device=self.device,
+                device=self.cfg.device,
                 # model settings: depth of layer
-                depth=2,
+                depth=self.cfg.arch.depth,
                 # model settings: node per layer
-                num_cells=64,
+                num_cells=self.cfg.arch.num_cells,
                 # model settings: activation function for all node
                 activation_class=torch.nn.Tanh  # or ReLU obviously!
             ),
@@ -104,18 +89,19 @@ class Mappo(MarlAlgorithm):
             distribution_class=torch.distributions.OneHotCategorical,
             return_log_prob=True,
         )  # log prob for PPO loss
-        print("==Running Policy==\n", self.policy(self.env.reset()))
+        self.policy(self.env.reset())
+        # print("==Running Policy==\n", self.policy(self.env.reset()))
 
         ## critic network
         critic_net = MultiAgentMLP(
             n_agent_inputs=self.env.observation_spec["agents", "observation"].shape[-1],
             n_agent_outputs=1,  # for a single value function (of a state obviously!)
             n_agents=self.n_agents,
-            centralized=self.mappo,
-            share_params=self.share_parameters_critic,
-            device=self.device,
-            depth=2,
-            num_cells=64,
+            centralized=self.cfg.ppo.centralized_critic,
+            share_params=self.cfg.ppo.share_parameters_critic,
+            device=self.cfg.device,
+            depth=self.cfg.arch.depth,
+            num_cells=self.cfg.arch.num_cells,
             activation_class=torch.nn.Tanh,
         )
         self.critic = TensorDictModule(
@@ -123,7 +109,8 @@ class Mappo(MarlAlgorithm):
             in_keys=[("agents", "observation")],
             out_keys=[("agents", "state_value")],
         )
-        print("==Running Critic==\n", self.critic(self.env.reset()))
+        self.critic(self.env.reset())
+        # print("==Running Critic==\n", self.critic(self.env.reset()))
 
 
     def train(self):
@@ -132,25 +119,25 @@ class Mappo(MarlAlgorithm):
         self.collector = Collector(
             self.env,
             self.policy,
-            device=self.device,
-            frames_per_batch=self.frames_per_batch,
-            total_frames=self.total_frames,
+            device=self.cfg.device,
+            frames_per_batch=self.cfg.train.frames_per_batch,
+            total_frames=self.cfg.train.total_frames,
         )
         self.replay_buffer = ReplayBuffer(
             storage=LazyTensorStorage(
-                self.frames_per_batch,
-                device=self.device,
+                self.cfg.train.frames_per_batch,
+                device=self.cfg.device,
             ),  # We store the frames_per_batch collected at each iteration
             sampler=SamplerWithoutReplacement(),
-            batch_size=self.minibatch_size,
+            batch_size=self.cfg.train.minibatch_size,
         )
 
         ## loss module
         self.loss_module = ClipPPOLoss(
             actor_network=self.policy,
             critic_network=self.critic,
-            clip_epsilon=self.clip_epsilon,
-            entropy_coeff=self.entropy_eps,
+            clip_epsilon=self.cfg.ppo.clip_epsilon,
+            entropy_coeff=self.cfg.ppo.entropy_eps,
             normalize_advantage=False  # Important to avoid normalizing across the agent dimension
         )
         self.loss_module.set_keys(
@@ -162,15 +149,15 @@ class Mappo(MarlAlgorithm):
             terminated=("agents", "terminated"),
         )
         self.loss_module.make_value_estimator(
-            ValueEstimators.GAE, gamma=self.gamma, lmbda=self.lmbda
+            ValueEstimators.GAE, gamma=self.cfg.ppo.gamma, lmbda=self.cfg.ppo.lmbda
         )
         self.GAE = self.loss_module.value_estimator  # LossModule
 
         ## optimizer
-        self.optimizer = torch.optim.Adam(self.loss_module.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.loss_module.parameters(), lr=self.cfg.optim.lr)
 
         ## setting progress bar and stat his
-        pbar = tqdm(total=self.n_iters, desc="episode_length_mean = 0")
+        pbar = tqdm(total=self.cfg.train.n_iters, desc="episode_length_mean = 0")
 
         episode_length_mean_list = []
         episode_gini_mean_list = []
@@ -207,8 +194,8 @@ class Mappo(MarlAlgorithm):
             self.replay_buffer.extend(data_view)  # add to buffer
 
             # compute
-            for _ in range(self.n_epochs):
-                for _ in range(self.frames_per_batch // self.minibatch_size):
+            for _ in range(self.cfg.train.n_epochs):
+                for _ in range(self.cfg.train.frames_per_batch // self.cfg.train.minibatch_size):
                     subdata = self.replay_buffer.sample()
                     loss_vals = self.loss_module(subdata)
 
@@ -222,7 +209,7 @@ class Mappo(MarlAlgorithm):
                     loss_value.backward()  # compute gradient of current tensor
 
                     torch.nn.utils.clip_grad_norm_(
-                        self.loss_module.parameters(), self.max_grad_norm
+                        self.loss_module.parameters(), self.cfg.optim.max_grad_norm
                     )  # Optional
 
                     self.optimizer.step()  # single opimization step
@@ -232,12 +219,7 @@ class Mappo(MarlAlgorithm):
 
             # Logging
             done = td.get(("next", "done")).squeeze(-1)
-            # print(done.shape, td.get(("next", "info", "episode_length")).shape)
-            # print(td.get(("next", "info", "episode_length"))[:, :, 0, :][done].mean().item())
-            # episode_reward_mean = (
-            #     # tensordict_data.get(("next", "agents", "episode_reward"))[done].mean().item()
-            #     td.get(("next", "info", "episode_length"))[done].mean().item()
-            # )
+
             print("ep_gini", td.get(("next", "info", "episode_gini"))[done].mean().item())
             print("ep_entropy", td.get(("next", "info", "episode_entropy"))[done].mean().item())
             print("ep_length", td.get(("next", "info", "episode_length"))[done].mean().item())
@@ -311,13 +293,22 @@ if __name__ == "__main__":
     )
     # adding episode reward
     env = episode_reward_ext(env)
+    env.n_agents = env_config.n_agents
     # check and start env
     check_env_specs(env)
     env.reset()
 
+    print(env.n_agents)
+
+    with open("configs/default_mappo.yaml", "r") as f:
+        cfg = dict_to_namespace(yaml.safe_load(f))
+
     # print(env.full_action_spec)
     # print(env.action_spec)
-    mappo = Mappo(env)
+    mappo = Mappo(env, cfg)
     mappo.train()
+
+    # for param_tensor in mappo.policy.state_dict():
+    #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)
 
     mappo.close()
