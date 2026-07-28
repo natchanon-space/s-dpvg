@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 
 from tensordict.tensordict import TensorDict
-from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded, Categorical
+from torchrl.data import Binary, Composite, Bounded, OneHot, Unbounded, NonTensor
 from torchrl.envs import EnvBase
 from torchrl.envs.batched_envs import ParallelEnv, SerialEnv, BatchedEnvBase
 from torchrl.envs.transforms import TransformedEnv, Compose, FlattenObservation, CatTensors, RenameTransform
@@ -19,10 +19,10 @@ def repeat_batch_dim(t: torch.Tensor, times: int):
 class SimpleDpvgConfig():
     n_agents: int = 5 # number of agents, must be odd positive
     k: int = 3          # choice sampled from U[0, k]
-    l: int = 10         # terminal condition is (max - min > l)
+    l: int = 6          # terminal condition is (max - min > l)
     passive: int = 0    # reward shaping if applicable!
-    dtype = torch.float32
     max_steps: int = 100
+    dtype = torch.float32
 
 
 class SimpleDpvgEnv(EnvBase):
@@ -76,6 +76,14 @@ class SimpleDpvgEnv(EnvBase):
                     "episode_gini": Tensor([self.episode_gini]),
                     "gini": Tensor([0]),
                     "entropy": Tensor([0]),
+                    "choice_info": 
+                        {
+                            "vote_0": Tensor([0]),
+                            "vote_1": Tensor([0]),
+                            "winning_choice": Tensor([0]),
+                            "terminal_0": Tensor([0]),
+                            "terminal_1": Tensor([0]),
+                        }
                 }
             },
         )
@@ -88,6 +96,11 @@ class SimpleDpvgEnv(EnvBase):
         count_1 = torch.sum(votes_idx)
         count_0 = self.n_agents - count_1
         win_choice_idx = int(count_1 > count_0)
+        # check type of choice pair
+        next_state_from_0 = self.raw_power + self.current_choices[:, 0]
+        done_0 = (torch.max(next_state_from_0) - torch.min(next_state_from_0) > self.l).unsqueeze(0)
+        next_state_from_1 = self.raw_power + self.current_choices[:, 1]
+        done_1 = (torch.max(next_state_from_1) - torch.min(next_state_from_1) > self.l).unsqueeze(0)
         # save power gain as reward
         power_gain = self.current_choices[:, win_choice_idx]
         # transition to next state
@@ -100,7 +113,7 @@ class SimpleDpvgEnv(EnvBase):
         # check done
         done = (torch.max(self.raw_power) - torch.min(self.raw_power) > self.l).unsqueeze(0) # shape [1]
         
-        # TODO: calculate for next step, info for next step
+        ## THIS IS INFO AFTER TAKING A STEP
         # gini calculation
         _gini = gini_coef(power_gain + current_state)  # calculate the same way as gini actions
         self.episode_gini = ((self.episode_gini * self.episode_length) + _gini) / (self.episode_length + 1)
@@ -128,6 +141,13 @@ class SimpleDpvgEnv(EnvBase):
                     "episode_gini": Tensor([self.episode_gini]),
                     "gini": Tensor([_gini]),
                     "entropy": Tensor([_entropy]),
+                    "choice_info": {
+                        "vote_0": count_0,
+                        "vote_1": count_1,
+                        "winning_choice": win_choice_idx,
+                        "terminal_0": done_0,
+                        "terminal_1": done_1,
+                    }
                 },
                 "done": done  # shape [1]
             }
@@ -185,6 +205,15 @@ class SimpleDpvgEnv(EnvBase):
                         "episode_entropy": Unbounded(shape=1),
                         "gini": Unbounded(shape=1),
                         "entropy": Unbounded(shape=1),
+                        "choice_info": Composite(
+                            {
+                                "vote_0": Unbounded(shape=1),
+                                "vote_1": Unbounded(shape=1),
+                                "winning_choice": Unbounded(shape=1),
+                                "terminal_0": Unbounded(shape=1),
+                                "terminal_1": Unbounded(shape=1),
+                            }
+                        ),
                     },
                     shape=(1,)
                 )
@@ -282,11 +311,36 @@ def get_vectorized_sdpvg(
     return env
 
 
-def print_step_detail(td: TensorDict, env_idx: int):
+def get_step_detail(td: TensorDict, step_idx: int) -> dict:
+    # get a specific step
+    step_td = td[step_idx]
+    obs = step_td["agents", "observation"]
+    n_agents = obs.shape[0]
+    # extract observation
+    curr_state = obs[..., 0, 3*n_agents:]
+    curr_choice = obs[..., 0, :2*n_agents].reshape(n_agents, 2)
+    # extract action
+    actions = step_td["agents", "action"]
+    # extract next obs
+    next_state = step_td["next", "agents", "observation"][..., 0, 3*n_agents:]
+    # extract info
+    info = step_td["next", "info"]
+    # combine data
+    return {
+        "n_agents": n_agents,
+        "curr_state": curr_state.tolist(),
+        "choices": curr_choice.tolist(),
+        "next_state": next_state.tolist(),
+        "actions": actions.tolist(),
+        "info": info.to_dict(convert_tensors=True),
+    }
+
+
+def print_step_detail(td: TensorDict, step_idx: int):
     ## shape of td == (*B, n)
     # prep data
     # print(td)
-    step_td = td[env_idx]  # debatched
+    step_td = td[step_idx]  # select step
     obs = step_td["agents", "observation"]
     n_agents = obs.shape[0]
     # observation
@@ -313,3 +367,5 @@ def print_step_detail(td: TensorDict, env_idx: int):
     print("=== info ===")
     print(f"entropy: {info['entropy'].item()}")
     print(f"   gini: {info['gini'].item()}")
+    print(f" length: {info['episode_length'].item()}")
+    print(f"   done: {step_td['next', 'done'].item()}")

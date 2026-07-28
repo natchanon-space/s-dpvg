@@ -258,7 +258,6 @@ class Mappo(MarlAlgorithm):
         # properly close
         self.env.close()
 
-
     def save(self):
         pass
 
@@ -280,7 +279,6 @@ if __name__ == "__main__":
     )
 
     # calculate appropriate number of environments
-    n_agents = env_config.n_agents
     frame_per_batch = 1000
     n_envs = frame_per_batch // env_config.max_steps
     

@@ -96,10 +96,10 @@ def batch_gini_actions(obs_td: TensorDict) -> TensorDict:
         batch_gini_coef(choice_0 + state_td) > batch_gini_coef(choice_1 + state_td),
         n_agents
     ).long().T
-    print("vote_idx", vote_idx.shape)
-    print("vote index", vote_idx.cpu().numpy())
+    # print("vote_idx", vote_idx.shape)
+    # print("vote index", vote_idx.cpu().numpy())
     actions = torch.nn.functional.one_hot(vote_idx, num_classes=2).float()
-    print("action", actions.shape)
+    # print("action", actions.shape)
     # return action as tensor dict
     return TensorDict(TensorDict(
         {"agents": {
@@ -122,15 +122,15 @@ def batch_greedy_actions(obs_td: TensorDict) -> TensorDict:
     choice_td = obs_td[:, :, :n_agents*2].reshape(n_envs, n_agents, n_agents, 2)
     # remove redundant choices, keeping batch info
     choice_td = choice_td[:, 0, :]
-    print(choice_td.shape, choice_td[..., 0].shape)
+    # print(choice_td.shape, choice_td[..., 0].shape)
     # gini action with batch dims
 
     # TEMP: action returns
     # actions = (choice_td[..., 0] < choice_td[..., 1]).to(torch.int8).unsqueeze(-1)
     vote_idx = (choice_td[..., 0] < choice_td[..., 1]).long()
     actions = torch.nn.functional.one_hot(vote_idx, num_classes=2).float()
-    print("vote_idx", vote_idx.shape)
-    print(actions.shape)
+    # print("vote_idx", vote_idx.shape)
+    # print(actions.shape)
     return TensorDict(TensorDict(
         {"agents": {
             "action": actions

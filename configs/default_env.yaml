@@ -1,0 +1,5 @@
+n_agents: 5
+k: 3
+l: 6
+passive: 0
+max_steps: 100

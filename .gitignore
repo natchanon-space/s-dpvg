@@ -3,6 +3,7 @@ todo.txt
 .vscode/
 .python-version
 playground/
+outs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
