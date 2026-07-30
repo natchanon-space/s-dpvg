@@ -8,6 +8,7 @@ import yaml
 from tensordict.nn import set_composite_lp_aggregate, TensorDictModule
 from tensordict.nn.distributions import NormalParamExtractor
 from torch import multiprocessing
+from torchrl.record import CSVLogger
 
 # Data collection
 from torchrl.collectors import SyncDataCollector, Collector
@@ -38,7 +39,6 @@ class Mappo(MarlAlgorithm):
     def __init__(self, env: EnvBase, cfg):
         super().__init__()
         set_composite_lp_aggregate(False).set()
-        # TODO: refactoring parameters out to be external setting
         # env registration
         self.env = env
         self.n_agents = self.env.n_agents
@@ -113,7 +113,7 @@ class Mappo(MarlAlgorithm):
         # print("==Running Critic==\n", self.critic(self.env.reset()))
 
 
-    def train(self):
+    def train(self, logger: CSVLogger = None):
         ## defining collector and buffer
         ## colelctor
         self.collector = Collector(
@@ -205,6 +205,26 @@ class Mappo(MarlAlgorithm):
                         + loss_vals["loss_entropy"]
                     )
 
+                    if logger:
+                        # TODO: change this to tensorboard
+                        prefix = "step"
+                        logger.log_scalar(
+                            f"{prefix}/loss_objective",
+                            loss_vals["loss_objective"].item(),
+                        )
+                        logger.log_scalar(
+                            f"{prefix}/loss_critic",
+                            loss_vals["loss_critic"].item(),
+                        )
+                        logger.log_scalar(
+                            f"{prefix}/loss_entropy",
+                            loss_vals["loss_entropy"].item(),
+                        )
+                        logger.log_scalar(
+                            f"{prefix}/total_loss",
+                            loss_value.item(),
+                        )        
+
                     # model optimization by step
                     loss_value.backward()  # compute gradient of current tensor
 
@@ -217,46 +237,41 @@ class Mappo(MarlAlgorithm):
             
             self.collector.update_policy_weights_()
 
-            # Logging
             done = td.get(("next", "done")).squeeze(-1)
 
-            print("ep_gini", td.get(("next", "info", "episode_gini"))[done].mean().item())
-            print("ep_entropy", td.get(("next", "info", "episode_entropy"))[done].mean().item())
-            print("ep_length", td.get(("next", "info", "episode_length"))[done].mean().item())
-            
-            episode_length_mean_list.append(
-                td.get(("next", "info", "episode_length"))[done].mean().item()
-            )
-            episode_entropy_mean_list.append(
-                td.get(("next", "info", "episode_entropy"))[done].mean().item()
-            )
-            episode_gini_mean_list.append(
-                td.get(("next", "info", "episode_gini"))[done].mean().item()
-            )
+            # Logging
+            if logger:
+                # TODO: change this to tensorboard
+                prefix = "iter"
+                logger.log_scalar(
+                    f"{prefix}/done_ep_count",
+                    done.sum().item(),
+                )
+                logger.log_scalar(
+                    f"{prefix}/mean_ep_gini",
+                    td.get(("next", "info", "episode_gini"))[done].mean().item(),
+                )
+                logger.log_scalar(
+                    f"{prefix}/mean_ep_entropy",
+                    td.get(("next", "info", "episode_entropy"))[done].mean().item(),
+                )
+                logger.log_scalar(
+                    f"{prefix}/mean_ep_length",
+                    td.get(("next", "info", "episode_length"))[done].mean().item(),
+                )
+                logger.log_scalar(
+                    f"{prefix}/max_ep_length",
+                    td.get(("next", "info", "episode_length"))[done].max().item(),
+                )
+                logger.log_scalar(
+                    f"{prefix}/min_ep_length",
+                    td.get(("next", "info", "episode_length"))[done].min().item(),
+                )
 
             pbar.set_description(f"episode_length_mean = {episode_length_mean_list[-1]}", refresh=False)
             pbar.update()
 
-        plt.plot(episode_length_mean_list)
-        plt.xlabel("Training iterations")
-        plt.ylabel("Length")
-        plt.title("Episode length mean")
-        plt.show()
-
-        plt.plot(episode_gini_mean_list)
-        plt.xlabel("Training iterations")
-        plt.ylabel("Gini")
-        plt.title("Episode gini mean")
-        plt.show()
-
-        plt.plot(episode_entropy_mean_list)
-        plt.xlabel("Training iterations")
-        plt.ylabel("Entropy")
-        plt.title("Episode entropy mean")
-        plt.show()
-
-        # properly close
-        self.env.close()
+            # TODO: add checkpointing for every specified number of iterations
 
     def save(self):
         pass
@@ -281,6 +296,12 @@ if __name__ == "__main__":
     # calculate appropriate number of environments
     frame_per_batch = 1000
     n_envs = frame_per_batch // env_config.max_steps
+
+    # example logger
+    logger = CSVLogger(
+        exp_name="mappo_defaul",
+        log_dir="outs",
+    )
     
     # define batched env
     env = get_vectorized_sdpvg(
@@ -304,7 +325,7 @@ if __name__ == "__main__":
     # print(env.full_action_spec)
     # print(env.action_spec)
     mappo = Mappo(env, cfg)
-    mappo.train()
+    mappo.train(logger)
 
     # for param_tensor in mappo.policy.state_dict():
     #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)

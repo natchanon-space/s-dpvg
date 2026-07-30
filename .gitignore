@@ -4,6 +4,7 @@ todo.txt
 .python-version
 playground/
 outs/
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
