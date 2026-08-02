@@ -268,12 +268,12 @@ class Mappo(MarlAlgorithm):
                     td.get(("next", "info", "episode_length"))[done].min().item(),
                 )
 
-            pbar.set_description(f"episode_length_mean = {episode_length_mean_list[-1]}", refresh=False)
+            # pbar.set_description(f"episode_length_mean = {episode_length_mean_list[-1]}", refresh=False)
             pbar.update()
 
             # TODO: add checkpointing for every specified number of iterations
 
-    def save(self):
+    def save(self, suffix: str):
         pass
 
     def load(self):
@@ -290,16 +290,16 @@ if __name__ == "__main__":
         n_agents=5,
         k=3,
         l=6,
-        max_steps=100
+        max_steps=128
     )
 
     # calculate appropriate number of environments
-    frame_per_batch = 1000
+    frame_per_batch = 4096
     n_envs = frame_per_batch // env_config.max_steps
 
     # example logger
     logger = CSVLogger(
-        exp_name="mappo_defaul",
+        exp_name="mappo_default",
         log_dir="outs",
     )
     
@@ -330,4 +330,4 @@ if __name__ == "__main__":
     # for param_tensor in mappo.policy.state_dict():
     #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)
 
-    mappo.close()
+    # mappo.close()

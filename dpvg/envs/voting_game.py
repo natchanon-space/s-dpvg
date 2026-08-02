@@ -21,7 +21,7 @@ class SimpleDpvgConfig():
     k: int = 3          # choice sampled from U[0, k]
     l: int = 6          # terminal condition is (max - min > l)
     passive: int = 0    # reward shaping if applicable!
-    max_steps: int = 100
+    max_steps: int = 128
     dtype = torch.float32
 
 
@@ -122,7 +122,6 @@ class SimpleDpvgEnv(EnvBase):
         self.episode_entropy = ((self.episode_entropy * self.episode_length) + _entropy) / (self.episode_length + 1)    
         # episode length
         self.episode_length += 1
-
 
         # combine output
         next_tensordict = TensorDict(
