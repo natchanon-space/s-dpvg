@@ -3,6 +3,7 @@ import torchrl.modules
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import yaml
+import os
 
 # Tensordict modules
 from tensordict.nn import set_composite_lp_aggregate, TensorDictModule
@@ -113,7 +114,7 @@ class Mappo(MarlAlgorithm):
         # print("==Running Critic==\n", self.critic(self.env.reset()))
 
 
-    def train(self, logger: CSVLogger = None):
+    def train(self, logger: CSVLogger = None, checkpoint_iter: int = None):
         ## defining collector and buffer
         ## colelctor
         self.collector = Collector(
@@ -166,7 +167,9 @@ class Mappo(MarlAlgorithm):
         ## training loop
 
         # collect data
+        iter_counter = 0
         for td in self.collector:  # equivalent to `for each batch`
+            iter_counter += 1
             td.set(
                 ("next", "agents", "done"),
                 td.get(("next", "done"))
@@ -195,6 +198,7 @@ class Mappo(MarlAlgorithm):
 
             # compute
             for _ in range(self.cfg.train.n_epochs):
+                # i.e. in range of n_envs
                 for _ in range(self.cfg.train.frames_per_batch // self.cfg.train.minibatch_size):
                     subdata = self.replay_buffer.sample()
                     loss_vals = self.loss_module(subdata)
@@ -271,13 +275,36 @@ class Mappo(MarlAlgorithm):
             # pbar.set_description(f"episode_length_mean = {episode_length_mean_list[-1]}", refresh=False)
             pbar.update()
 
-            # TODO: add checkpointing for every specified number of iterations
+            if checkpoint_iter and logger:
+                # TODO: recheck after implementation of save
+                if iter_counter % checkpoint_iter == 0:
+                    self.save(
+                        log_dir=os.path.join(logger.log_dir, logger.exp_name),
+                        suffix=f"{iter_counter}"
+                    )
 
-    def save(self, suffix: str):
-        pass
+        # TODO: recheck after implementation of save
+        if logger:
+            self.save(
+                log_dir=os.path.join(logger.log_dir, logger.exp_name),
+                suffix="final",
+            )
 
-    def load(self):
-        pass
+    def save(self, log_dir: str, suffix: str = None):
+        if suffix:
+            policy_path = os.path.join(log_dir, f"checkpoint_policy_{suffix}.pt2")
+            critic_path = os.path.join(log_dir, f"checkpoint_critic_{suffix}.pt2")
+            torch.save(self.policy.state_dict(), policy_path)
+            torch.save(self.critic.state_dict(), critic_path)
+
+    def load(self, log_dir: str, suffix: str = None):
+        # TODO: add loading line
+        policy_path = os.path.join(log_dir, f"checkpoint_policy_{suffix}.pt2")
+        critic_path = os.path.join(log_dir, f"checkpoint_critic_{suffix}.pt2")
+        self.policy.load_state_dict(policy_path)
+        self.critic.load_state_dict(critic_path)
+        self.policy.eval()
+        self.critic.eval()
 
     def close(self):
         """close everything"""
@@ -294,12 +321,12 @@ if __name__ == "__main__":
     )
 
     # calculate appropriate number of environments
-    frame_per_batch = 4096
+    frame_per_batch = 1024
     n_envs = frame_per_batch // env_config.max_steps
 
     # example logger
     logger = CSVLogger(
-        exp_name="mappo_default",
+        exp_name="mappo_toy",
         log_dir="outs",
     )
     
@@ -319,13 +346,13 @@ if __name__ == "__main__":
 
     print(env.n_agents)
 
-    with open("configs/default_mappo.yaml", "r") as f:
+    with open("configs/toy_mappo.yaml", "r") as f:
         cfg = dict_to_namespace(yaml.safe_load(f))
 
     # print(env.full_action_spec)
     # print(env.action_spec)
     mappo = Mappo(env, cfg)
-    mappo.train(logger)
+    mappo.train(logger, checkpoint_iter=5)
 
     # for param_tensor in mappo.policy.state_dict():
     #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)
