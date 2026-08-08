@@ -1,30 +1,25 @@
 import torch
 import torchrl.modules
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-import yaml
 import os
 
 # Tensordict modules
 from tensordict.nn import set_composite_lp_aggregate, TensorDictModule
-from tensordict.nn.distributions import NormalParamExtractor
-from torch import multiprocessing
 from torchrl.record import CSVLogger
 
 # Data collection
-from torchrl.collectors import SyncDataCollector, Collector
+from torchrl.collectors import Collector
 from torchrl.data.replay_buffers import ReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
 
 # Env
-from torchrl.envs import RewardSum, TransformedEnv, ParallelEnv, EnvBase
-from torchrl.envs.libs.vmas import VmasEnv
+from torchrl.envs import EnvBase
 from torchrl.envs.utils import check_env_specs
 from dpvg.envs.voting_game import SimpleDpvgEnv, SimpleDpvgConfig, get_vectorized_sdpvg
 
 # Multi-agent network
-from torchrl.modules import MultiAgentMLP, ProbabilisticActor, TanhNormal
+from torchrl.modules import MultiAgentMLP, ProbabilisticActor
 
 # Loss
 from torchrl.objectives import ClipPPOLoss, ValueEstimators
@@ -32,6 +27,7 @@ from torchrl.objectives import ClipPPOLoss, ValueEstimators
 # local methods import
 from dpvg.algorithms.common import MarlAlgorithm, episode_reward_ext
 from configs.common import dict_to_namespace
+
 
 class Mappo(MarlAlgorithm):
     
@@ -174,13 +170,13 @@ class Mappo(MarlAlgorithm):
                 ("next", "agents", "done"),
                 td.get(("next", "done"))
                 .unsqueeze(-1)
-                .expand(td.get_item_shape(("next", env.reward_key))),
+                .expand(td.get_item_shape(("next", self.env.reward_key))),
             )
             td.set(
                 ("next", "agents", "terminated"),
                 td.get(("next", "terminated"))
                 .unsqueeze(-1)
-                .expand(td.get_item_shape(("next", env.reward_key))),
+                .expand(td.get_item_shape(("next", self.env.reward_key))),
             )
             # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
 
@@ -301,9 +297,9 @@ class Mappo(MarlAlgorithm):
         # TODO: add loading line
         policy_path = os.path.join(log_dir, f"checkpoint_policy_{suffix}.pt2")
         critic_path = os.path.join(log_dir, f"checkpoint_critic_{suffix}.pt2")
-        self.policy.load_state_dict(policy_path)
-        self.critic.load_state_dict(critic_path)
+        self.policy.load_state_dict(torch.load(policy_path))
         self.policy.eval()
+        self.critic.load_state_dict(torch.load(critic_path))
         self.critic.eval()
 
     def close(self):
@@ -311,50 +307,50 @@ class Mappo(MarlAlgorithm):
         self.env.close()
 
 
-if __name__ == "__main__":
-    # env config
-    env_config = SimpleDpvgConfig(
-        n_agents=5,
-        k=3,
-        l=6,
-        max_steps=128
-    )
+# if __name__ == "__main__":
+#     # env config
+#     env_config = SimpleDpvgConfig(
+#         n_agents=5,
+#         k=3,
+#         l=6,
+#         max_steps=128
+#     )
 
-    # calculate appropriate number of environments
-    frame_per_batch = 1024
-    n_envs = frame_per_batch // env_config.max_steps
+#     # calculate appropriate number of environments
+#     frame_per_batch = 1024
+#     n_envs = frame_per_batch // env_config.max_steps
 
-    # example logger
-    logger = CSVLogger(
-        exp_name="mappo_toy",
-        log_dir="outs",
-    )
+#     # example logger
+#     logger = CSVLogger(
+#         exp_name="mappo_toy",
+#         log_dir="outs",
+#     )
     
-    # define batched env
-    env = get_vectorized_sdpvg(
-        env_config=env_config,
-        n_workers=n_envs,
-        mode="p",  # parallel env
-        flatten_obs=True,
-    )
-    # adding episode reward
-    env = episode_reward_ext(env)
-    env.n_agents = env_config.n_agents
-    # check and start env
-    check_env_specs(env)
-    env.reset()
+#     # define batched env
+#     env = get_vectorized_sdpvg(
+#         env_config=env_config,
+#         n_workers=n_envs,
+#         mode="p",  # parallel env
+#         flatten_obs=True,
+#     )
+#     # adding episode reward
+#     env = episode_reward_ext(env)
+#     env.n_agents = env_config.n_agents
+#     # check and start env
+#     check_env_specs(env)
+#     env.reset()
 
-    print(env.n_agents)
+#     print(env.n_agents)
 
-    with open("configs/toy_mappo.yaml", "r") as f:
-        cfg = dict_to_namespace(yaml.safe_load(f))
+#     with open("configs/toy_mappo.yaml", "r") as f:
+#         cfg = dict_to_namespace(yaml.safe_load(f))
 
-    # print(env.full_action_spec)
-    # print(env.action_spec)
-    mappo = Mappo(env, cfg)
-    mappo.train(logger, checkpoint_iter=5)
+#     # print(env.full_action_spec)
+#     # print(env.action_spec)
+#     mappo = Mappo(env, cfg)
+#     mappo.train(logger, checkpoint_iter=5)
 
-    # for param_tensor in mappo.policy.state_dict():
-    #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)
+#     # for param_tensor in mappo.policy.state_dict():
+#     #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)
 
-    # mappo.close()
+#     # mappo.close()
