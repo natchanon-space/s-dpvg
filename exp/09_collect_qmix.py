@@ -2,7 +2,7 @@ import yaml
 
 from dpvg.envs.voting_game import *
 from dpvg.algorithms.common import episode_reward_ext
-from dpvg.algorithms.mappo import Mappo
+from dpvg.algorithms.qmix import Qmix
 from dpvg.eval.common import Simulator
 from configs.common import dict_to_namespace
 
@@ -33,23 +33,23 @@ if __name__ == "__main__":
     env.n_agents = env_config.n_agents
     env.check_env_specs()
 
-    # mappo setup
-    with open("configs/default_ippo.yaml", "r") as f:
+    # qmix setup
+    with open("configs/default_qmix.yaml", "r") as f:
             cfg = dict_to_namespace(yaml.safe_load(f))
-    mappo = Mappo(env, cfg)
+    qmix = Qmix(env, cfg)
 
     # for i in range(100, 1001, 100):
     i = 1000
-    mappo.load("logs/default_ippo", f"{i}")
+    qmix.load("logs/default_qmix", f"{i}")
 
     # collections
     simulator = Simulator(env, n_envs, max_steps)
 
     # collect gini
     simulator.rollout_and_save(
-        policy=mappo.policy,
+        policy=qmix.policy,
         n_episodes=n_episodes,
-        path=f"outs/default_ippo_{i}.pkl"
+        path=f"outs/default_qmix_{i}.pkl"
     )
 
     env.close()

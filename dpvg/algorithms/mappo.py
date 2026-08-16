@@ -33,17 +33,9 @@ class Mappo(MarlAlgorithm):
     
     device: str = "cpu"
     
-    def __init__(self, env: EnvBase, cfg):
-        super().__init__()
+    def __init__(self, env, cfg):
         set_composite_lp_aggregate(False).set()
-        # env registration
-        self.env = env
-        self.n_agents = self.env.n_agents
-        self.env.reset()
-        self.cfg = cfg
-
-        # build
-        self.build()
+        super().__init__(env, cfg)
     
     def build(self):
         ## policy network
@@ -156,10 +148,6 @@ class Mappo(MarlAlgorithm):
         ## setting progress bar and stat his
         pbar = tqdm(total=self.cfg.train.n_iters, desc="episode_length_mean = 0")
 
-        episode_length_mean_list = []
-        episode_gini_mean_list = []
-        episode_entropy_mean_list = []
-
         ## training loop
 
         # collect data
@@ -206,7 +194,6 @@ class Mappo(MarlAlgorithm):
                     )
 
                     if logger:
-                        # TODO: change this to tensorboard
                         prefix = "step"
                         logger.log_scalar(
                             f"{prefix}/loss_objective",
@@ -307,40 +294,41 @@ class Mappo(MarlAlgorithm):
         self.env.close()
 
 
-# if __name__ == "__main__":
-#     # env config
-#     env_config = SimpleDpvgConfig(
-#         n_agents=5,
-#         k=3,
-#         l=6,
-#         max_steps=128
-#     )
+if __name__ == "__main__":
+    # env config
+    env_config = SimpleDpvgConfig(
+        n_agents=5,
+        k=3,
+        l=6,
+        max_steps=128
+    )
 
-#     # calculate appropriate number of environments
-#     frame_per_batch = 1024
-#     n_envs = frame_per_batch // env_config.max_steps
+    # calculate appropriate number of environments
+    frame_per_batch = 1024
+    n_envs = frame_per_batch // env_config.max_steps
 
-#     # example logger
-#     logger = CSVLogger(
-#         exp_name="mappo_toy",
-#         log_dir="outs",
-#     )
+    # example logger
+    logger = CSVLogger(
+        exp_name="mappo_toy",
+        log_dir="outs",
+    )
     
-#     # define batched env
-#     env = get_vectorized_sdpvg(
-#         env_config=env_config,
-#         n_workers=n_envs,
-#         mode="p",  # parallel env
-#         flatten_obs=True,
-#     )
-#     # adding episode reward
-#     env = episode_reward_ext(env)
-#     env.n_agents = env_config.n_agents
-#     # check and start env
-#     check_env_specs(env)
-#     env.reset()
+    # define batched env
+    env = get_vectorized_sdpvg(
+        env_config=env_config,
+        n_workers=n_envs,
+        mode="p",  # parallel env
+        flatten_obs=True,
+    )
+    # adding episode reward
+    env = episode_reward_ext(env)
+    env.n_agents = env_config.n_agents
+    # check and start env
+    check_env_specs(env)
+    env.reset()
 
-#     print(env.n_agents)
+    print(env.n_agents)
+    print(env.observation_spec)
 
 #     with open("configs/toy_mappo.yaml", "r") as f:
 #         cfg = dict_to_namespace(yaml.safe_load(f))

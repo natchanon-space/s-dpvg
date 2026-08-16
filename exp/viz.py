@@ -14,20 +14,22 @@ def ep_len(collection: list):
     for col in collection:
         last_step_info = col[-1]["info"]
         ep.append(last_step_info["episode_length"][0])
-    # print(ep)
+    print(ep)
     return ep
 
 greedy = read_collection("outs/default_greedy.pkl")
 gini = read_collection("outs/default_gini.pkl")
 mappo = read_collection("outs/default_mappo_1000.pkl")
 ippo = read_collection("outs/default_ippo_1000.pkl")
+qmix = read_collection("outs/default_qmix_1000.pkl")
 
 # plt.hist(ep_len(greedy), bins=64, range=(0, 256), label="greedy", a="")
 # plt.hist(ep_len(gini), bins=64, range=(0, 256), label="gini")
-# plt.hist(ep_len(mappo), bins=64, range=(0, 256), label="mappo", alpha=0.5)
+plt.hist(ep_len(mappo), bins=64, range=(0, 256), label="mappo", alpha=0.5)
 # plt.hist(ep_len(ippo), bins=64, range=(0, 256), label="ippo", alpha=0.5)
+plt.hist(ep_len(qmix), bins=64, range=(0, 256), label="qmix", alpha=0.5)
 
-print(stats.ks_2samp(ep_len(mappo), ep_len(ippo)))
+# print(stats.ks_2samp(ep_len(mappo), ep_len(ippo)))
 
-# plt.legend()
-# plt.show()
+plt.legend()
+plt.show()
