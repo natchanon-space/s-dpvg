@@ -107,6 +107,7 @@ class Qmix(MarlAlgorithm):
             loss_function="smooth_l1",
             delay_value=True,
         )
+        target_updater = SoftUpdate(self.loss_module, eps=self.cfg.optim.loss_eps)
 
         self.loss_module.set_keys(
             # reward=self.env.reward_key,
@@ -121,6 +122,7 @@ class Qmix(MarlAlgorithm):
             lr=self.cfg.optim.lr,
         )
 
+
         pbar = tqdm(total=self.cfg.train.n_iters, desc="episode_length_mean = 0")
 
         # collect data
@@ -128,9 +130,6 @@ class Qmix(MarlAlgorithm):
         for td in self.collector:
             iter_counter += 1
 
-            # reward = td.get(("next",) + self.env.reward_key)
-            # team_reward = reward.sum(dim=-2)
-            # team_reward = -td.get(("next", "done")).float()
             team_reward = torch.where(
                 td.get(("next", "done")),
                 -1.0,
@@ -166,7 +165,7 @@ class Qmix(MarlAlgorithm):
                     self.optimizer.step()
                     self.optimizer.zero_grad()
 
-                    target_updater = SoftUpdate(self.loss_module, eps=self.cfg.optim.loss_eps)
+                    target_updater.step()
 
             self.collector.update_policy_weights_()
 

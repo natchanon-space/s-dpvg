@@ -36,20 +36,19 @@ if __name__ == "__main__":
     # mappo setup
     with open("configs/default_ippo.yaml", "r") as f:
             cfg = dict_to_namespace(yaml.safe_load(f))
-    mappo = Mappo(env, cfg)
+    ippo = Mappo(env, cfg)
 
-    # for i in range(100, 1001, 100):
-    i = 1000
-    mappo.load("logs/default_ippo", f"{i}")
+    for i in range(100, 1001, 100):
+        ippo.load("logs/default_ippo", f"{i}")
 
-    # collections
-    simulator = Simulator(env, n_envs, max_steps)
+        # collections
+        simulator = Simulator(env, n_envs, max_steps)
 
-    # collect gini
-    simulator.rollout_and_save(
-        policy=mappo.policy,
-        n_episodes=n_episodes,
-        path=f"outs/default_ippo_{i}.pkl"
-    )
+        # collect gini
+        simulator.rollout_and_save(
+            policy=ippo.policy,
+            n_episodes=n_episodes,
+            path=f"outs/default_ippo_{i}.pkl"
+        )
 
     env.close()

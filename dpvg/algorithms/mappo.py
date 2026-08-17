@@ -7,12 +7,6 @@ import os
 from tensordict.nn import set_composite_lp_aggregate, TensorDictModule
 from torchrl.record import CSVLogger
 
-# Data collection
-from torchrl.collectors import Collector
-from torchrl.data.replay_buffers import ReplayBuffer
-from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-from torchrl.data.replay_buffers.storages import LazyTensorStorage
-
 # Env
 from torchrl.envs import EnvBase
 from torchrl.envs.utils import check_env_specs
@@ -30,8 +24,6 @@ from configs.common import dict_to_namespace
 
 
 class Mappo(MarlAlgorithm):
-    
-    device: str = "cpu"
     
     def __init__(self, env, cfg):
         set_composite_lp_aggregate(False).set()
@@ -104,22 +96,7 @@ class Mappo(MarlAlgorithm):
 
     def train(self, logger: CSVLogger = None, checkpoint_iter: int = None):
         ## defining collector and buffer
-        ## colelctor
-        self.collector = Collector(
-            self.env,
-            self.policy,
-            device=self.cfg.device,
-            frames_per_batch=self.cfg.train.frames_per_batch,
-            total_frames=self.cfg.train.total_frames,
-        )
-        self.replay_buffer = ReplayBuffer(
-            storage=LazyTensorStorage(
-                self.cfg.train.frames_per_batch,
-                device=self.cfg.device,
-            ),  # We store the frames_per_batch collected at each iteration
-            sampler=SamplerWithoutReplacement(),
-            batch_size=self.cfg.train.minibatch_size,
-        )
+        self.build_collector(self.policy)
 
         ## loss module
         self.loss_module = ClipPPOLoss(
@@ -330,13 +307,14 @@ if __name__ == "__main__":
     print(env.n_agents)
     print(env.observation_spec)
 
-#     with open("configs/toy_mappo.yaml", "r") as f:
-#         cfg = dict_to_namespace(yaml.safe_load(f))
+    with open("configs/toy_mappo.yaml", "r") as f:
+        import yaml
+        cfg = dict_to_namespace(yaml.safe_load(f))
 
-#     # print(env.full_action_spec)
-#     # print(env.action_spec)
-#     mappo = Mappo(env, cfg)
-#     mappo.train(logger, checkpoint_iter=5)
+    # print(env.full_action_spec)
+    # print(env.action_spec)
+    mappo = Mappo(env, cfg)
+    mappo.train(logger, checkpoint_iter=5)
 
 #     # for param_tensor in mappo.policy.state_dict():
 #     #     print(param_tensor, "\t", mappo.policy.state_dict()[param_tensor].size)

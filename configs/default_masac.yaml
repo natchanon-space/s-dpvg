@@ -12,7 +12,9 @@ optim:
   max_grad_norm: 1.0
   loss_eps: 0.99
 
+sac:
+  centralized_qvalue: true  # IPPO if false, MAPPO if true
+
 arch:
   depth: 2
   num_cells: 64
-  embed_dim: 32
