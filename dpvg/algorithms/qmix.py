@@ -22,11 +22,8 @@ from configs.common import dict_to_namespace
 
 class Qmix(MarlAlgorithm):
 
-    device: str = "cpu"
-
     def __init__(self, env, cfg):
         super().__init__(env, cfg)
-        # self.env.reward_key = ("agents", "episode_reward")
 
     def build(self):
         # q module
@@ -69,7 +66,7 @@ class Qmix(MarlAlgorithm):
             ),
             in_keys=[
                 ("agents", "chosen_action_value"),
-                ("agents", "observation"),  # suppose to be a state
+                ("agents", "observation"),  # as for states
             ],
             out_keys=[
                 "chosen_action_value"
@@ -232,47 +229,3 @@ class Qmix(MarlAlgorithm):
         self.policy.eval()
         self.q_mixer.load_state_dict(torch.load(qmixer_path))
         self.q_mixer.eval()
-
-
-# if __name__ == "__main__":
-#     # env config
-#     env_config = SimpleDpvgConfig(
-#         n_agents=5,
-#         k=3,
-#         l=6,
-#         max_steps=128
-#     )
-
-#     # calculate appropriate number of environments
-#     frame_per_batch = 1024
-#     n_envs = frame_per_batch // env_config.max_steps
-
-#     # example logger
-#     logger = CSVLogger(
-#         exp_name="default_qmix",
-#         log_dir="outs",
-#     )
-    
-#     # define batched env
-#     env = get_vectorized_sdpvg(
-#         env_config=env_config,
-#         n_workers=n_envs,
-#         mode="p",  # parallel env
-#         flatten_obs=True,
-#     )
-#     # adding episode reward
-#     env = episode_reward_ext(env)
-#     env.n_agents = env_config.n_agents
-#     # check and start env
-#     check_env_specs(env)
-#     env.reset()
-
-#     print(env.n_agents)
-#     print(env.observation_spec)
-
-#     with open("configs/default_qmix.yaml", "r") as f:
-#         cfg = dict_to_namespace(yaml.safe_load(f))
-
-
-#     qmix = Qmix(env, cfg)
-#     qmix.train(logger, checkpoint_iter=5)
